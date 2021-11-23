@@ -1,0 +1,343 @@
+---
+title: "TinyModels as a Recommender System"
+author: "Cliff Lee & Trang Do"
+date: "11/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(DiceDesign)
+library(tidymodels)
+library(tidyverse)
+library(workflows)
+library(tune)
+library(mlbench)
+library(rsample)
+library(recipes)
+library(parsnip)
+library(yardstick)
+library(tm)
+library(tidytext)
+library(tm.plugin.mail)
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+github_repo <- "https://raw.githubusercontent.com/cliftonleesps/607_document_classification/master/"
+sample_size <- 100
+```
+
+```{r}
+# Define functions
+
+# Helper function to paste full URLs when retrieving Github hosted files
+full_github_url <- function(relative_path) {
+  return (paste(github_repo, relative_path, sep="" ))
+}
+
+random_ham_file <- function() {
+  # Select a different random message that's not part of the training set
+  random_ham <- sample(unlist(ham_files), 1, replace = FALSE)
+  
+  # Repeat until we find a random spam file that is not in the training set
+  while (any(str_detect(all_samples, random_ham))) {
+    random_ham <- sample(unlist(ham_files), 1, replace = FALSE)
+  }
+  return (random_ham)
+}
+
+
+random_spam_file <- function() {
+  # Select a different random message that's not part of the training set
+  random_spam <- sample(unlist(spam_files), 1, replace = FALSE)
+  
+  # Repeat until we find a random spam file that is not in the training set
+  while (any(str_detect(all_samples, random_spam))) {
+    random_spam <- sample(unlist(spam_files), 1, replace = FALSE)
+  }
+  return (random_spam)
+}
+
+
+# Calculate a metric on a email subject. Range: 0.0 to 1.0
+get_spam_subject_metric <- function(filename) { 
+  spam_message <- read_file(full_github_url(filename))
+  
+  subject <- str_to_lower( str_match(spam_message, "\nSubject: (.*?)\n"))
+  spam_subject_tibble <- tibble(
+    text = subject[2]
+  )
+  spam_subject_words_tmp <- spam_subject_tibble %>% 
+    unnest_tokens(word, text)
+  spam_subject_word_count <- nrow(spam_subject_words_tmp)
+  
+  spam_subject_words_tmp <- inner_join(spam_subject_words_tmp, spam_subject_words_dictionary,by="word")
+  spam_subject_metric <- nrow(spam_subject_words_tmp) / spam_subject_word_count
+  return (spam_subject_metric)
+}
+
+
+
+```
+
+
+```{r}
+
+# Calculate a metric on a message body compared to other spam messages. Range: 0.0 to 1.0
+get_spam_body_metric <- function(filename) { 
+  # retrieve the file from Github and store locally in a hidden file
+  hidden_filename <- '.tmp.txt'
+  github_file <- read_file(full_github_url(filename))
+  write_file(github_file, hidden_filename)
+  
+  email_message <- VCorpus(MBoxSource(hidden_filename), readerControl = list(reader = readMail))
+  
+  if (length(email_message) == 0) {
+    return (0)
+  }
+  
+  message_body <- email_message[[1]]$content
+  message_body_tibble <- tibble(
+    text = message_body
+  )
+  message_body
+  message_body_tibble <- message_body_tibble %>% 
+    unnest_tokens(word, text, format="html")
+  message_body_count <- nrow(message_body_tibble)
+  spam_body_tibble <- inner_join(message_body_tibble, spam_words_dictionary,by="word")
+  spam_body_metric <- nrow(spam_body_tibble) / message_body_count
+  return (spam_body_metric)
+}
+
+# Calculate a metric on a message body compared to other ham messages. Range: 0.0 to 1.0
+get_ham_body_metric <- function(filename) {
+  # retrieve the file from Github and store locally in a hidden file
+  hidden_filename <- '.tmp.txt'
+  github_file <- read_file(full_github_url(filename))
+  write_file(github_file, hidden_filename)
+
+  email_message <- VCorpus(MBoxSource(hidden_filename), readerControl = list(reader = readMail))
+  
+  if (length(email_message) == 0) {
+    return (0)
+  }
+  
+  message_body <- email_message[[1]]$content
+  message_body_tibble <- tibble(
+    text = message_body
+  )
+  message_body
+  message_body_tibble <- message_body_tibble %>% 
+    unnest_tokens(word, text, format="html")
+  message_body_count <- nrow(message_body_tibble)
+
+  ham_body_tibble <- inner_join(message_body_tibble, ham_words_dictionary,by="word")
+  ham_body_metric <- nrow(ham_body_tibble) / message_body_count
+  return (ham_body_metric)
+}
+
+```
+
+
+```{r}
+# Read the various dictionaries
+spam_subject_words_dictionary <- read_csv(
+                                          full_github_url("spam_subject_words.csv"),
+                                          show_col_types = FALSE)
+spam_words_dictionary <- read_csv(
+                                  full_github_url("spam_words.csv"),
+                                  show_col_types = FALSE)
+
+
+ham_words_dictionary <- read_csv(
+                                full_github_url("ham_words.csv"),
+                                show_col_types = FALSE
+                                )
+ham_words_dictionary
+
+full_github_url("spam_files.csv")
+
+# Retrieve the lists of spam and ham files
+spam_files <- read_csv(
+                      full_github_url("spam_files.csv"), 
+                      show_col_types = FALSE)
+
+ham_files <- read_csv(
+                      full_github_url("ham_files.csv"),
+                      show_col_types = FALSE)
+
+
+# Randomly select both types of files
+all_samples <- sample(unlist(ham_files), sample_size, replace = FALSE)
+all_samples <- append(all_samples,
+                     sample(unlist(spam_files), sample_size, replace = FALSE) )
+
+# now load the messages from Github
+email_messages <- tibble()
+count <- 0
+for (fn in all_samples) {
+  #print (paste(fn, count))
+
+    # Determine the type of message
+  if (str_detect(fn, "ham/")) {
+    type <- "ham"
+  } else {
+    type <- "spam"
+  }
+
+  new_observation <- tibble(
+                            name = fn,
+                            type = type,
+                            spam_subject_metric = get_spam_subject_metric(fn),
+                            spam_body_metric = get_spam_body_metric(fn),
+                            ham_body_metric = get_ham_body_metric(fn)
+                            )
+  email_messages <- bind_rows(email_messages, new_observation)
+  count <- count + 1
+}
+email_messages
+```
+
+
+
+```{r}
+# Start building the model
+set.seed(4393003)
+
+email_split <- initial_split(email_messages, 
+                                prop = 3/4)
+email_split
+
+email_train <- training(email_split)
+email_test <- testing(email_split)
+
+email_cv <- vfold_cv(email_train)
+email_cv
+# define the recipe
+email_recipe <- 
+  # which consists of the formula (outcome ~ predictors)
+  recipe(type ~ spam_subject_metric +spam_body_metric + ham_body_metric, 
+         data = email_messages) %>%
+  step_normalize(all_numeric()) %>%
+  step_impute_knn(all_predictors())
+
+
+email_recipe
+
+
+email_train_preprocessed <- email_recipe %>%
+  # apply the recipe to the training data
+  prep(email_train) %>%
+  # extract the pre-processed training dataset
+  juice()
+email_train_preprocessed
+
+
+rf_model <- 
+  # specify that the model is a random forest
+  rand_forest() %>%
+  # specify that the `mtry` parameter needs to be tuned
+  set_args(mtry = tune()) %>%
+  # select the engine/package that underlies the model
+  set_engine("ranger", importance = "impurity") %>%
+  # choose either the continuous regression or binary classification mode
+  set_mode("classification") 
+
+
+# set the workflow
+rf_workflow <- workflow() %>%
+  # add the recipe
+  add_recipe(email_recipe) %>%
+  # add the model
+  add_model(rf_model)
+rf_workflow
+
+rf_grid <- expand.grid(mtry = c(2,3))
+rf_tune_results <- rf_workflow %>%
+  tune_grid(resamples = email_cv, #CV object
+            grid = rf_grid, # grid of values to try
+            metrics = metric_set(accuracy, roc_auc) # metrics we care about
+  )
+
+rf_tune_results %>%
+  collect_metrics()
+
+param_final <- rf_tune_results %>%
+  select_best(metric = "accuracy")
+param_final
+
+rf_workflow <- rf_workflow %>%
+  finalize_workflow(param_final)
+
+
+rf_fit <- rf_workflow %>%
+  # fit on the training set and evaluate on test set
+  last_fit(email_split)
+rf_fit
+
+
+test_performance <- rf_fit %>% collect_metrics()
+test_performance
+
+test_predictions <- rf_fit %>% collect_predictions()
+test_predictions
+
+final_model <- fit(rf_workflow, email_messages)
+final_model
+# We have our final tuned recommender model
+```
+
+
+```{r}
+# Select a few different random message that's not part of the training set for testing
+total_cases <- 20
+count <- 0
+correct_count <- 0
+while (count < total_cases) {
+  
+  # For even iterations, just select a ham file
+  if ( count %% 2 == 0) {
+    correct_type <- "ham"
+    test_filename <- random_ham_file()
+  } else {
+    correct_type <- "spam"
+    test_filename <- random_spam_file()
+  }
+  
+  test_email_subject_metric <- get_spam_subject_metric(test_filename)
+  test_email_spam_body_metric <- get_spam_body_metric(test_filename)
+  test_email_ham_body_metric <- get_ham_body_metric(test_filename)
+  
+  test_email <- tribble(~spam_subject_metric, ~spam_body_metric, ~ham_body_metric,
+                       test_email_subject_metric, test_email_spam_body_metric, test_email_ham_body_metric
+                       )
+  #test_email
+  
+  # predict
+  email_type_prediction <- predict(final_model, new_data = test_email)
+  
+  # was it predicted as spam or ham?
+  email_type <- email_type_prediction$.pred_class
+  
+  # Increment if the prediction was correct
+  if (email_type == correct_type) {
+    correct_count <- correct_count + 1
+    label <- ""
+  } else {
+    label <- " INCORRECTLY"
+  }
+  
+  # output
+  print (paste("The file (", test_filename,") was",label," classified as: ", email_type, sep=""))
+  
+  count <- count + 1
+}
+
+print (paste("The accuracy rate is: ", round(correct_count/total_cases, 2), sep=""))
+```
+
