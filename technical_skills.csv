@@ -1,29 +1,34 @@
-word,Count
-Data Visualization,23
-Python,18
-SQL,13
-Machine Learning,6
-Microsoft Excel,9
-Statistics,47
-Machine Learning,6
-Natural Language Processing,0
-Data Wrangling,1
-Big Data,28
-Linear Algebra,1
-Calculus,5
-Data Visualization,23
-Data Analytics,49
-Database,65
-Java,3
-Data Science,8
-Blockchain,2
-Regression,64
-Predict,6
-Coding,3
-Text Analysis,0
-Data Preparation,6
-Data Mining,30
-R,8
-Collection,29
-Data Cleaning,1
-Modeling,59
+word
+algebra
+analysis
+analytics
+big
+blockchain
+calculus
+cleaning
+coding
+collection
+data
+database
+excel
+java
+language
+learning
+linear
+machine
+microsoft
+mining
+modeling
+natural
+predict
+preparation
+processing
+python
+r
+regression
+sql
+science
+statistics
+text
+visualization
+wrangling
