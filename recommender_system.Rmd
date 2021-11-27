@@ -1,0 +1,40 @@
+---
+title: "Recommending Accounting Programs with Data Science Skills"
+author: "Team Four - Kratika Patel, Peter Phung, Cliff Lee and Josephy Foy"
+date: "11/27/2021"
+output: 
+  html_document:
+    theme: 
+      bootswatch: simplex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## Overview
+
+Prospective students face many options on where to earn a graduate accounting degree. On the east coast alone, there are thousands of universities offering a graduate accounting degree. Adding to this complexity, students must also evaluate whether each university program offers skills that employers are recruiting for. Some skills are technical and deal with specific topics such as SQL, Python and statistics while others are 'soft' skills like team work and collaboration.  
+
+In this projects, we will show how to build a recommender system using tinymodels by first loading pre-processed college meta data and sought-after data science skills. After classifying each program as a match for having sufficient data science training, we create a sample set and build a recommender system.
+
+The recommender system at the end will be able to categorize any other accounting program as having a good data science program or not.
+
+
+## Loading Collegiate and Desired Skills Data
+
+
+
+# Creating Categorizations
+
+# Recommender System Built on Tiny Models
+
+# Conclusion
+
+
+
+
+
+
