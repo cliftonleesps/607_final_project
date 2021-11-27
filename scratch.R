@@ -241,14 +241,23 @@ final_model
 
 
 # predict fictitious colleges
-test_college <- tibble(
-  name = "Test college",
+test_bad_college <- tibble(
+  name = "Test Bad college",
   match_technical_skills = 0,
   match_soft_skills = 1, 
   school_score = 1
 )
 
-predict(final_model, new_data = test_college)
+test_good_college <- tibble(
+  name = "Test Good college",
+  match_technical_skills = 1,
+  match_soft_skills = 1, 
+  school_score = 2
+)
+
+# Predict will output if the college has a good data science program
+predict(final_model, new_data = test_bad_college)
+predict(final_model, new_data = test_good_college)
 
 
 
