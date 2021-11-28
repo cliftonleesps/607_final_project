@@ -1,0 +1,50 @@
+---
+title: "Geocode Schools"
+author: "Joseph Foy"
+date: "11/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(tidyverse)
+```
+```{r}
+url1 <- "https://raw.githubusercontent.com/cliftonleesps/607_final_project/master/Acct_Curricula2.csv"
+```
+
+```{r}
+AcctCurricula <- read.csv(url1)
+```
+
+```{r}
+view(AcctCurricula)
+```
+
+```{r}
+url2 <- "https://raw.githubusercontent.com/cliftonleesps/607_final_project/master/EDGE_GEOCODE_POSTSECSCH_2021.csv"
+schools <- read.csv(url2)
+```
+
+```{r}
+head(schools)  
+```
+
+```{r}
+schools.df <- data.frame(schools)
+class(schools.df)
+```
+
+```{r}
+head(schools.df, 5)
+```
+
+
+```{r}
+str(schools.df)
+```
+
