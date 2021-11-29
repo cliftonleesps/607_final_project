@@ -13,38 +13,31 @@ knitr::opts_chunk$set(echo = TRUE)
 library(sf)
 library(tidyverse)
 ```
+
 ```{r}
 url1 <- "https://raw.githubusercontent.com/cliftonleesps/607_final_project/master/Acct_Curricula2.csv"
-```
-
-```{r}
-AcctCurricula <- read.csv(url1)
-```
-
-```{r}
-view(AcctCurricula)
+AcctCurricula <- data.frame(read.csv(url1))
+col <- colnames(AcctCurricula) 
+col <- toupper(col)
+col[1] <- "NAME"
+colnames(AcctCurricula) <- col
+Names <- AcctCurricula %>% select("NAME")
+Names <- data.frame(NAME = unique(Names$NAME))
 ```
 
 ```{r}
 url2 <- "https://raw.githubusercontent.com/cliftonleesps/607_final_project/master/EDGE_GEOCODE_POSTSECSCH_2021.csv"
-schools <- read.csv(url2)
-```
-
-```{r}
-head(schools)  
-```
-
-```{r}
-schools.df <- data.frame(schools)
-class(schools.df)
-```
-
-```{r}
-head(schools.df, 5)
+schools <- data.frame(read.csv(url2))
+col <- colnames(schools)
+col[1] <- "UNITID"
+colnames(schools) <- col
+head(schools)
 ```
 
 
 ```{r}
-str(schools.df)
-```
 
+SchoolGeo <- schools %>%
+      filter(NAME %in% Names$NAME)
+glimpse(SchoolGeo)
+```
