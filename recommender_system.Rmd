@@ -111,6 +111,20 @@ nrow(temp_schools)
 temp_schools <- temp_schools[-1,]
 nrow(temp_schools)
 
+# Function to remove duplicate words to be used in the next for loop
+
+rem_dup_word <- function(x){
+  x <- tolower(x)
+  x <- gsub("-", " ", x)
+  x <- gsub("/", " ", x)
+  x <- gsub("[[:punct:]]", "", x)
+  x <- gsub("[[:digit:]]", "", x)
+  x <- gsub("this course", "", x)
+  x <- gsub("topics include", "", x)
+  return(paste(unique(trimws(tibble(word = unlist(strsplit(x, split = " ", fixed = F, perl = T))) %>% anti_join(stop_words) %>% pull(word))),
+         collapse = " "))
+}
+
 # now iterate through the schools and split the descriptions
 
 for (count in 1:nrow(temp_schools)) {
@@ -120,24 +134,16 @@ for (count in 1:nrow(temp_schools)) {
   # Obtain the school anme
   school_name <- ts[1]
   
-  # For description, remove endlines and punctuation and split by spaces
-  w <- ts[2] %>%
-    str_to_lower() %>%
-    str_replace_all ("\n", " ") %>%
-    str_replace_all ("[[:punct:]]", "") %>% 
-    str_split(" ") %>% 
-    unique()
+  # Use the rem_dup_word function on the 2nd element of ts, which contains the
+  # course description
+  description_string <- rem_dup_word(ts[2])
   
-  school_descriptions <- tibble(
-    word = ""
-  )
-
-  # Save the split words into a school_description vector
-  for (i in w[[1]]) {
-    school_descriptions <- school_descriptions %>% 
-      add_row(word = i)
-  }
-  school_descriptions <- school_descriptions %>% arrange() %>% unique()
+  # Make each word in the `description_string` character vector a row element
+  # in a `school_descriptions` dataframe.
+  school_descriptions <- data.frame(as.list(str_split(description_string, " ")))
+  
+  # Change the column name in the `school_descriptions` dataframe
+  colnames(school_descriptions) <- c("word")
 
   # now join with the technical skills
   # If any words match the vector of technical skills then we 
