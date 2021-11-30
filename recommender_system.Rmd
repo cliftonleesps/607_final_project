@@ -39,6 +39,12 @@ library(recipes)
 library(parsnip)
 library(yardstick)
 library(tm)
+
+
+
+# Load Geocoding script so we get a variable named SchoolGeo for later use
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+source("geocoding_schools.R")
 ```
 
 
@@ -178,6 +184,12 @@ temp_schools <- temp_schools %>% mutate (good_data_science_program = ifelse( sch
 # memory
 temp_schools <- subset(temp_schools, select = -c(2))
 ncol(temp_schools)
+
+
+# now join with SchoolGeo so we get the latitude and longtitude
+#temp_schools <- right_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
+temp_schools <- inner_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
+
 
 ```
 
