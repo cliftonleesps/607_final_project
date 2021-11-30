@@ -98,6 +98,19 @@ Names$NAME[Names$NAME == "University of North Carolina Chapel Hill"] <- "Univers
 SchoolGeo <- schools %>%
   filter(NAME %in% Names$NAME)
 
+s <- schools %>% filter(NAME== "University of Connecticut")
+SchoolGeo <- add_row(SchoolGeo, s)
+
+SchoolGeo[39,2] <- "Fitchberg State University"
+SchoolGeo[130,2] <- "Saint Joseph's University\n"
+SchoolGeo[1,2] <- "Pennsylvania State University"
+SchoolGeo[142,2] <- "Strayer University - Delaware"
+SchoolGeo[143,2] <- "Strayer University-North Carolina (online, for-profit)"
+SchoolGeo[41,2] <- "University of Massachussetts - Amherst"
+SchoolGeo[45,2] <- "University of Massachussetts - Dartmouth"
+SchoolGeo[113,2] <- "University of North Carolina Chapel Hill"
+
+
 #Remove Duplicate row for Pennsylvania State University-Penn State Harrisburg
 SchoolGeo <- SchoolGeo[!(SchoolGeo$UNITID == 49576722),]
 #glimpse(SchoolGeo)
@@ -238,8 +251,8 @@ ncol(temp_schools)
 
 
 # now join with SchoolGeo so we get the latitude and longtitude
-#temp_schools <- right_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
-temp_schools <- inner_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
+temp_schools <- right_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
+#temp_schools <- inner_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
 
 
 ```
