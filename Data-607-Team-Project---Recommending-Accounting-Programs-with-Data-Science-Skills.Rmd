@@ -140,7 +140,7 @@ SchoolGeo <- SchoolGeo[!(SchoolGeo$UNITID == 49576722),]
 
 The collegiate accounting in its native form requires a little tidying. Each row is an observation of a course and its curriculum description. We'll create a vector from each description and join with a vector of technical and a vector of soft skills. If there are any matches, the match_technical_skills attribute is set from zero to one.
 
-```{r}
+```{r, message=FALSE}
 # initialize some counters
 current_school <- accounting_programs$School[1]
 description <- accounting_programs$Description[1]
