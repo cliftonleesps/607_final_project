@@ -19,7 +19,7 @@ Prospective students face many options on where to earn a graduate accounting de
 
 In this projects, we approach it in three parts.  Part I is the construction of a recommender system.  Part II is to create a mapping system for recommended schools.  Part III is a discussion on some of the issues with obtaining the data in a webscraping or copy and paste approach.
 
-# PART I: Recommendar System Construction
+# PART I: Recommender System Construction
 
 We will show how to build a recommender system using tinymodels by first loading pre-processed college meta data and sought-after data science skills. After classifying each program as a match for having sufficient data science training, we create a sample set and build a recommender system.
 
