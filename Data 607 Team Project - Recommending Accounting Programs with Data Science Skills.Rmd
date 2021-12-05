@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Prospective students face many options on where to earn a graduate accounting degree. On the east coast alone, there are thousands of universities offering a graduate accounting degree. Adding to this complexity, students must also evaluate whether each university program offers skills that employers are recruiting for. Some skills are technical and deal with specific topics such as SQL, Python and statistics while others are 'soft' skills like team work and collaboration.  
 
-In this projects, we approach it in three parts.  Part I is the construction of a recommender system.  Part II is to create a mapping system for recommended schools.  Part III is a discussion on some of the issues with obtaining the data in a webscraping or copy and paste approach.
+In this project, we approach it in three parts.  Part I is the construction of a recommender system.  Part II is to create a mapping system for recommended schools.  Part III is a discussion on some of the issues with obtaining the data in a webscraping or copy and paste approach.
 
 # PART I: Recommender System Construction
 
@@ -55,9 +55,9 @@ library(htmltools)
 ### Loading Collegiate and Desired Skills Data
 
 Building on the prior work by Team Four, we load three data frames:
- * Graduate Accounting Programs on the east coast
- * Dictionary of desired technical skills by employers
- * Dictionary of desired soft skills by employers
+- Graduate Accounting Programs on the east coast
+- Dictionary of desired technical skills by employers
+- Dictionary of desired soft skills by employers
 
 ```{r loading, message=FALSE}
 accounting_programs <- read_csv("https://github.com/cliftonleesps/607_final_project/blob/master/Acct_Curricula2.csv?raw=true", show_col_types = FALSE, )
@@ -123,17 +123,6 @@ SchoolGeo[113,2] <- "University of North Carolina Chapel Hill"
 
 #Remove Duplicate row for Pennsylvania State University-Penn State Harrisburg
 SchoolGeo <- SchoolGeo[!(SchoolGeo$UNITID == 49576722),]
-#glimpse(SchoolGeo)
-
-
-# subset(SchoolGeo, NAME == "Ramapo College of New Jersey")
-# 
-# ?inner_join
-# 
-# t <- right_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
-# subset(t, NAME == "Ramapo College of New Jersey")
-
-
 ```
 
 
@@ -242,8 +231,6 @@ for (count in 1:nrow(temp_schools)) {
     #print (school_name)
     temp_schools[count,][4] <- 1
   }
-  
-  
 }
 
 # create a new column school_score = match_technical_skills + match_soft_skills
@@ -251,7 +238,6 @@ temp_schools <- temp_schools %>% mutate (school_score = match_technical_skills +
 
 # create another new column good_data_science_program = [YES,NO] 
 temp_schools <- temp_schools %>% mutate (good_data_science_program = ifelse( school_score >= 2, "YES", "NO"))
-
 
 
 # drop the description column since it takes a lot of
@@ -262,9 +248,6 @@ ncol(temp_schools)
 
 # now join with SchoolGeo so we get the latitude and longtitude
 temp_schools <- right_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
-#temp_schools <- inner_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
-
-
 ```
 
 ### Constructing A Recommender System With Tiny Models
@@ -274,8 +257,6 @@ temp_schools <- right_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
 # Start building the model
 set.seed(4393003)
 sample_size <- 100
-
-
 
 glimpse(temp_schools)
 random_schools <- sample(temp_schools, size= 2,  replace = FALSE)
