@@ -1,0 +1,470 @@
+---
+title: "Recommending Accounting Programs with Data Science Skills"
+author: "Team Four - Kratika Patel, Peter Phung, Cliff Lee and Josephy Foy"
+date: "11/27/2021"
+output:
+  html_document:
+    theme:
+      bootswatch: simplex
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+Prospective students face many options on where to earn a graduate accounting degree. On the east coast alone, there are thousands of universities offering a graduate accounting degree. Adding to this complexity, students must also evaluate whether each university program offers skills that employers are recruiting for. Some skills are technical and deal with specific topics such as SQL, Python and statistics while others are 'soft' skills like team work and collaboration.  
+
+In this projects, we approach it in three parts.  Part I is the construction of a recommender system.  Part II is to create a mapping system for recommended schools.  Part III is a discussion on some of the issues with obtaining the data in a webscraping or copy and paste approach.
+
+# PART I: Recommendar System Construction
+
+We will show how to build a recommender system using tinymodels by first loading pre-processed college meta data and sought-after data science skills. After classifying each program as a match for having sufficient data science training, we create a sample set and build a recommender system.
+
+The recommender system at the end will be able to categorize any other accounting program as having a good data science program or not.
+
+### Loading of requred libraries for the overall project.
+
+```{r libraries, message=FALSE}
+# Libraries
+library(tidyverse)
+library(tidytext)
+
+
+# For tinymodels
+library(DiceDesign)
+library(tidymodels)
+library(workflows)
+library(tune)
+library(mlbench)
+library(rsample)
+library(recipes)
+library(parsnip)
+library(yardstick)
+library(tm)
+
+# For mapping
+library(sf)
+library(leaflet)
+library(htmltools)
+```
+
+
+### Loading Collegiate and Desired Skills Data
+
+Building on the prior work by Team Four, we load three data frames:
+ * Graduate Accounting Programs on the east coast
+ * Dictionary of desired technical skills by employers
+ * Dictionary of desired soft skills by employers
+
+```{r loading, message=FALSE}
+accounting_programs <- read_csv("https://github.com/cliftonleesps/607_final_project/blob/master/Acct_Curricula2.csv?raw=true", show_col_types = FALSE, )
+technical_skills <- read_csv("https://github.com/cliftonleesps/607_final_project/raw/master/technical_skills.csv", show_col_types = FALSE)
+soft_skills <- read_csv("https://github.com/cliftonleesps/607_final_project/raw/master/soft_skills.csv", show_col_types = FALSE)
+
+```
+
+
+```{r geocoding_schools}
+# Geocoding Schools from Kratika Patel
+library(sf)
+library(tidyverse)
+
+url1 <- "https://raw.githubusercontent.com/cliftonleesps/607_final_project/master/Acct_Curricula2.csv"
+AcctCurricula <- data.frame(read.csv(url1))
+col <- colnames(AcctCurricula) 
+col <- toupper(col)
+col[1] <- "NAME"
+colnames(AcctCurricula) <- col
+Names <- AcctCurricula %>% select("NAME")
+
+Names <- data.frame(NAME = unique(Names$NAME))
+
+url2 <- "https://raw.githubusercontent.com/cliftonleesps/607_final_project/master/EDGE_GEOCODE_POSTSECSCH_2021.csv"
+schools <- data.frame(read.csv(url2))
+col <- colnames(schools)
+col[1] <- "UNITID"
+colnames(schools) <- col
+#head(schools)
+
+
+SchoolGeo <- schools %>%
+  filter(NAME %in% Names$NAME)
+
+#Correct typos and clean names of Universities not detected in schools dataframe
+Names %>%
+  filter(!(NAME %in% schools$NAME))
+Names$NAME[Names$NAME == "Fitchberg State University"] <- "Fitchburg State University"
+Names$NAME[Names$NAME == "Saint Joseph's University\n"] <- "Saint Joseph's University"
+Names$NAME[Names$NAME == "Pennsylvania State University"] <- "Pennsylvania State University-Penn State Harrisburg"
+Names$NAME[Names$NAME == "Strayer University - Delaware"] <- "Strayer University-Delaware"
+Names$NAME[Names$NAME == "Strayer University-North Carolina (online, for-profit)"] <- "Strayer University-North Carolina"
+Names$NAME[Names$NAME == "University of Massachussetts - Amherst"] <- "University of Massachusetts-Amherst"
+Names$NAME[Names$NAME == "University of Massachussetts - Dartmouth"] <- "University of Massachusetts-Dartmouth"
+Names$NAME[Names$NAME == "University of North Carolina Chapel Hill"] <- "University of North Carolina at Chapel Hill"
+
+SchoolGeo <- schools %>%
+  filter(NAME %in% Names$NAME)
+
+s <- schools %>% filter(NAME== "University of Connecticut")
+SchoolGeo <- add_row(SchoolGeo, s)
+
+SchoolGeo[39,2] <- "Fitchberg State University"
+SchoolGeo[130,2] <- "Saint Joseph's University\n"
+SchoolGeo[1,2] <- "Pennsylvania State University"
+SchoolGeo[142,2] <- "Strayer University - Delaware"
+SchoolGeo[143,2] <- "Strayer University-North Carolina (online, for-profit)"
+SchoolGeo[41,2] <- "University of Massachussetts - Amherst"
+SchoolGeo[45,2] <- "University of Massachussetts - Dartmouth"
+SchoolGeo[113,2] <- "University of North Carolina Chapel Hill"
+
+
+#Remove Duplicate row for Pennsylvania State University-Penn State Harrisburg
+SchoolGeo <- SchoolGeo[!(SchoolGeo$UNITID == 49576722),]
+#glimpse(SchoolGeo)
+
+
+# subset(SchoolGeo, NAME == "Ramapo College of New Jersey")
+# 
+# ?inner_join
+# 
+# t <- right_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
+# subset(t, NAME == "Ramapo College of New Jersey")
+
+
+```
+
+
+### Tidying Collegiate Data And Creating Categorizations
+
+The collegiate accounting in its native form requires a little tidying. Each row is an observation of a course and its curriculum description. We'll create a vector from each description and join with a vector of technical and a vector of soft skills. If there are any matches, the match_technical_skills attribute is set from zero to one.
+
+```{r, message=FALSE}
+# initialize some counters
+current_school <- accounting_programs$School[1]
+description <- accounting_programs$Description[1]
+
+# temp_schools is where we keep our tidy data
+temp_schools <- tibble(
+  name = "",
+  description = "",
+  match_technical_skills = 0, 
+  match_soft_skills = 0
+)
+
+# Iterate through the accounting programs
+# Since a college appears on more than one row, we have to aggregate all of the course descriptions grouping
+# by college name
+for (row in 2:nrow(accounting_programs)) {
+  
+  # if we detect a different school name, then save the data to the tibble
+  if (current_school != accounting_programs$School[row]) {
+      temp_schools <- temp_schools %>%
+        add_row( 
+                name = current_school, 
+                description = paste0(description, accounting_programs$Description[row]),
+                match_technical_skills = 0, 
+                match_soft_skills = 0
+        )
+      description <- accounting_programs$Description[row]
+      current_school <- accounting_programs$School[row]
+  } else if (!is.na(accounting_programs$Description[row])) {
+    # Just keep pasting the description for later
+    description <- paste0(description, accounting_programs$Description[row])
+  }
+}
+
+
+# Add the last school to the tibble
+temp_schools <- temp_schools %>%
+  add_row( 
+    name = current_school, 
+    description = paste0(description, accounting_programs$Description[row]),
+    match_technical_skills = 0, 
+    match_soft_skills = 0
+  )
+
+# delete the first row
+nrow(temp_schools)
+temp_schools <- temp_schools[-1,]
+nrow(temp_schools)
+
+# Function to remove duplicate words to be used in the next for loop
+
+rem_dup_word <- function(x){
+  x <- tolower(x)
+  x <- gsub("-", " ", x)
+  x <- gsub("/", " ", x)
+  x <- gsub("[[:punct:]]", "", x)
+  x <- gsub("[[:digit:]]", "", x)
+  x <- gsub("this course", "", x)
+  x <- gsub("topics include", "", x)
+  return(paste(unique(trimws(tibble(word = unlist(strsplit(x, split = " ", fixed = F, perl = T))) %>% anti_join(stop_words) %>% pull(word))),
+         collapse = " "))
+}
+
+# now iterate through the schools and split the descriptions
+
+for (count in 1:nrow(temp_schools)) {
+  # get the current row
+  ts <- temp_schools[count,]
+  
+  # Obtain the school anme
+  school_name <- ts[1]
+  
+  # Use the rem_dup_word function on the 2nd element of ts, which contains the
+  # course description
+  description_string <- rem_dup_word(ts[2])
+  
+  # Make each word in the `description_string` character vector a row element
+  # in a `school_descriptions` dataframe.
+  school_descriptions <- data.frame(as.list(str_split(description_string, " ")))
+  
+  # Change the column name in the `school_descriptions` dataframe
+  colnames(school_descriptions) <- c("word")
+
+  # now join with the technical skills
+  # If any words match the vector of technical skills then we 
+  # set technical_skill_match = 1
+  technical_skill_match <- inner_join(technical_skills, school_descriptions,by="word")
+  if (nrow(technical_skill_match) > 0) {
+    #print (school_name)
+    temp_schools[count,][3] <- 1
+  }
+  
+  # now join with the soft skills
+  # If any words match the vector of soft skills, we 
+  # soft_skills_match = 1
+  soft_skills_match <- inner_join(soft_skills, school_descriptions,by="word")
+  if (nrow(soft_skills_match) > 0) {
+    #print (school_name)
+    temp_schools[count,][4] <- 1
+  }
+  
+  
+}
+
+# create a new column school_score = match_technical_skills + match_soft_skills
+temp_schools <- temp_schools %>% mutate (school_score = match_technical_skills + match_soft_skills)
+
+# create another new column good_data_science_program = [YES,NO] 
+temp_schools <- temp_schools %>% mutate (good_data_science_program = ifelse( school_score >= 2, "YES", "NO"))
+
+
+
+# drop the description column since it takes a lot of
+# memory
+temp_schools <- subset(temp_schools, select = -c(2))
+ncol(temp_schools)
+
+
+# now join with SchoolGeo so we get the latitude and longtitude
+temp_schools <- right_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
+#temp_schools <- inner_join(SchoolGeo, temp_schools, by = c("NAME"= "name"))
+
+
+```
+
+### Constructing A Recommender System With Tiny Models
+
+```{r}
+
+# Start building the model
+set.seed(4393003)
+sample_size <- 100
+
+
+
+glimpse(temp_schools)
+random_schools <- sample(temp_schools, size= 2,  replace = FALSE)
+random_schools
+
+# Randomly select schools
+schools_bad <- temp_schools %>% filter(good_data_science_program == "NO")
+schools_good <- temp_schools %>% filter(good_data_science_program == "YES")
+
+
+sample_schools <- schools_good[sample(nrow(schools_good), sample_size - nrow(schools_bad)), ]
+for (c in 1:nrow(schools_bad)) {
+  row <- schools_bad[c,]
+  sample_schools <- add_row(sample_schools, tibble(
+      name = row$name,
+      match_technical_skills = row$match_technical_skills,
+      match_soft_skills = row$match_soft_skills,
+      school_score = row$school_score, 
+      good_data_science_program = row$good_data_science_program
+    )
+  )
+}
+
+# now we have our samples
+school_split <- initial_split(sample_schools, 
+                             prop = 3/4)
+school_split
+
+school_train <- training(school_split)
+school_test <- testing(school_split)
+
+
+school_cv <- vfold_cv(school_train)
+school_cv
+
+# define the recipe
+school_recipe <- 
+  # which consists of the formula (outcome ~ predictors)
+  recipe(good_data_science_program ~ match_technical_skills + match_soft_skills + school_score, 
+         data = sample_schools) %>%
+  step_normalize(all_numeric()) %>%
+  step_impute_knn(all_predictors())
+
+school_recipe
+
+
+school_train_preprocessed <- school_recipe %>%
+  # apply the recipe to the training data
+  prep(school_train) %>%
+  # extract the pre-processed training dataset
+  juice()
+school_train_preprocessed
+
+
+rf_model <- 
+  # specify that the model is a random forest
+  rand_forest() %>%
+  # specify that the `mtry` parameter needs to be tuned
+  set_args(mtry = tune()) %>%
+  # select the engine/package that underlies the model
+  set_engine("ranger", importance = "impurity") %>%
+  # choose either the continuous regression or binary classification mode
+  set_mode("classification") 
+
+
+# set the workflow
+rf_workflow <- workflow() %>%
+  # add the recipe
+  add_recipe(school_recipe) %>%
+  # add the model
+  add_model(rf_model)
+rf_workflow
+
+rf_grid <- expand.grid(mtry = c(2,3))
+rf_tune_results <- rf_workflow %>%
+  tune_grid(resamples = school_cv, #CV object
+            grid = rf_grid, # grid of values to try
+            metrics = metric_set(accuracy, roc_auc) # metrics we care about
+  )
+
+rf_tune_results %>%
+  collect_metrics()
+
+
+param_final <- rf_tune_results %>%
+  select_best(metric = "accuracy")
+#param_final
+
+rf_workflow <- rf_workflow %>%
+  finalize_workflow(param_final)
+
+
+rf_fit <- rf_workflow %>%
+  # fit on the training set and evaluate on test set
+  last_fit(school_split)
+#rf_fit
+
+
+test_performance <- rf_fit %>% collect_metrics()
+#test_performance
+
+test_predictions <- rf_fit %>% collect_predictions()
+#test_predictions
+
+final_model <- fit(rf_workflow, sample_schools)
+#final_model
+
+```
+
+### Testing The Recommender System on Example College Programs
+
+```{r}
+
+# predict fictitious colleges
+test_bad_college <- tibble(
+  name = "Test Bad college",
+  match_technical_skills = 0,
+  match_soft_skills = 1, 
+  school_score = 1
+)
+
+test_good_college <- tibble(
+  name = "Test Good college",
+  match_technical_skills = 1,
+  match_soft_skills = 1, 
+  school_score = 2
+)
+
+# Predict will output if the college has a good data science program
+recommendation <- predict(final_model, new_data = test_bad_college)
+print(paste0("For a college without a data science program the recommendation is ", recommendation$.pred_class))
+
+
+recommendation <- predict(final_model, new_data = test_good_college)
+print(paste0("For a college with a data science program the recommendation is ", recommendation$.pred_class))
+
+```
+
+```{r}
+# Dataframe of recommended schools.
+temp_schools %>% filter(good_data_science_program == "YES")
+```
+
+```{r}
+# A visual of the database of recommended schools.
+view(temp_schools)
+```
+
+```{r}
+# Create a label that encompasses multiple variables.  Use the <p> html code to create a hard return and separate the City and State data.
+temp_schools$label <- paste("<p><a>", temp_schools$NAME,"<p></a>",
+                         temp_schools$CITY,",",
+                          temp_schools$STATE)
+```
+
+# PART II: Mapping the Recommended Schools
+
+```{r} 
+# Create Leaflet map centered on the US eastern seaboard.
+# The lapply function is used to interpret the <p> html code instead of literal text.  
+  leaflet(temp_schools) %>% 
+  addProviderTiles("CartoDB") %>%
+  setView(-80.95, 35.635, zoom = 4) %>%
+  addCircles(lat = ~ LAT, lng = ~ LON, label = lapply(temp_schools$label, HTML))
+```
+
+# PART III: Data Acquisition Issues with Webscraping
+
+### Web Scraping College Course Descriptions
+
+Websites for colleges are vastly different from one another in terms of HTML structure and website layout. For example, for some colleges, when navigating to their course descriptions page, the page itself will contain links to PDFs.
+
+![Figure 1: Course description page for Angelo State University](https://github.com/cliftonleesps/607_final_project/blob/266e45d9a0038de5f7b4ee7f1d8a445a293131e9/Pictures/fig1.png)
+
+When accessing the course description page for other colleges, the descriptions will be on the page itself instead of on a PDF as shown on Figure 2.
+
+![Figure 2: Three of the concentration requirements for the Masters of Accounting program taken from the Appalachian State University website](https://github.com/cliftonleesps/607_final_project/blob/266e45d9a0038de5f7b4ee7f1d8a445a293131e9/Pictures/fig2.png)
+Another plan that the team had in mind was to ignore the websites themselves and just parse through the course catalog PDFs for all of the colleges with graduate accounting programs. However, we ran into a similar problem where even the PDFs themselves were vastly different from one another in terms of layout if we compare Figure 3 to Figure 4.
+
+![Figure 3: A snippet of the graduate accounting course descriptions for Angelo State University taken from the 2019-2020 graduate catalogue](https://github.com/cliftonleesps/607_final_project/blob/266e45d9a0038de5f7b4ee7f1d8a445a293131e9/Pictures/fig3.png)
+
+![Figure 4: A snippet of the graduate account course descriptions for Bay Path University taken from the 2019 - 2020 graduate catalogue](https://github.com/cliftonleesps/607_final_project/blob/266e45d9a0038de5f7b4ee7f1d8a445a293131e9/Pictures/fig4.png)
+
+Based on these caveats that the team encountered when exploring the possibility of web scraping for college course descriptions, the team decided that it would be best to just use the data that was collected from Dr. Foy's students which was manually copy and pasted.
+  
+# Conclusion
+
+By mining course descriptions words and joining them with vectors of desired skills, we successfully built a recommender system with a few key predictors. We extended the model by adding geocoding and mapping features to perform basic cluster analysis. From a visualize overview centered on the Eastern U.S. coastline, we can observe clustering of the schools predominently in the northeast: NYC Metro, Boston Metro and the Philadelphia Metro areas. Also North Carolina and Florida show significant clustering. Constructing a database of courses from schools probably would not be as efficient as copying and pasting data directly from the sshool's websites.  
+
+We can further extend the model and add other aspects into the model such as tuition costs, post graduate employment percentage and national university ranking.
+
+Note, some colleges did not publish course descriptions so they were penalized by the recommender system.
